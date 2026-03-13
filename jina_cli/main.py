@@ -229,21 +229,32 @@ def search(ctx, query, arxiv, ssrn, images, blog, num, tbs, location, gl, hl, as
     tbs_val = f"qdr:{tbs}" if tbs else None
 
     try:
+        # Always fetch JSON from API, format on CLI side
         if blog:
-            result = api.search_blog(query, api_key=key, num=num, tbs=tbs_val, as_json=as_json)
+            result = api.search_blog(query, api_key=key, num=num, tbs=tbs_val, as_json=True)
         elif arxiv:
-            result = api.search_arxiv(query, api_key=key, num=num, tbs=tbs_val, as_json=as_json)
+            result = api.search_arxiv(query, api_key=key, num=num, tbs=tbs_val, as_json=True)
         elif ssrn:
-            result = api.search_ssrn(query, api_key=key, num=num, tbs=tbs_val, as_json=as_json)
+            result = api.search_ssrn(query, api_key=key, num=num, tbs=tbs_val, as_json=True)
         elif images:
-            result = api.search_images(query, api_key=key, num=num, tbs=tbs_val, gl=gl, hl=hl, as_json=as_json)
+            result = api.search_images(query, api_key=key, num=num, tbs=tbs_val, gl=gl, hl=hl, as_json=True)
         else:
             result = api.search_web(
                 query, api_key=key, num=num, tbs=tbs_val,
-                location=location, gl=gl, hl=hl, as_json=as_json,
+                location=location, gl=gl, hl=hl, as_json=True,
             )
-        if as_json and isinstance(result, dict):
-            click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        if as_json:
+            click.echo(json.dumps(result, indent=2, ensure_ascii=False) if isinstance(result, dict) else result)
+        elif isinstance(result, dict):
+            for r in result.get("results", []):
+                title = r.get("title", "")
+                url = r.get("url", "")
+                snippet = r.get("snippet", "")
+                click.echo(f"{title}")
+                click.echo(f"  {url}")
+                if snippet:
+                    click.echo(f"  {snippet}")
+                click.echo()
         else:
             click.echo(result)
     except Exception as e:
