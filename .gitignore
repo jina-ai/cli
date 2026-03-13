@@ -1,6 +1,37 @@
+# Python
 __pycache__/
 *.pyc
-.venv/
+*.pyo
+*.pyd
 *.egg-info/
+*.egg
 dist/
 build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution
+*.tar.gz
+MANIFEST
