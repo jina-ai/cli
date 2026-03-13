@@ -133,6 +133,27 @@ jina search "BERT" --json | jq '.results[0].url'
 jina read https://example.com --json | jq '.data.content'
 ```
 
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | User/input error (missing args, bad input, missing API key) |
+| 2 | API/server error (network, timeout, server error) |
+| 130 | Interrupted (Ctrl+C) |
+
+Useful for scripting and agent workflows:
+
+```bash
+jina search "query" && echo "success" || echo "failed with $?"
+```
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `JINA_API_KEY` | API key for Jina services (required for most commands) |
+
 ## For AI agents
 
 An agent with shell access can use this CLI directly:

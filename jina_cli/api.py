@@ -3,13 +3,24 @@
 import os
 import sys
 import json
+import time
 
 import httpx
+
+from jina_cli import __version__
 
 API_BASE = "https://api.jina.ai"
 READER_BASE = "https://r.jina.ai"
 SEARCH_SVIP_BASE = "https://svip.jina.ai"
 DEFAULT_TIMEOUT = 30.0
+
+USER_AGENT = f"jina-cli/{__version__}"
+
+# Retry config for transient errors (429, 5xx, timeouts, connection errors)
+MAX_RETRIES = 3
+RETRY_BACKOFF = [1.0, 2.0, 4.0]  # seconds between retries
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 def get_api_key(api_key: str | None = None) -> str | None:
@@ -40,6 +51,65 @@ def _auth_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"}
 
 
+def _base_headers() -> dict[str, str]:
+    """Headers included in every request."""
+    return {"User-Agent": USER_AGENT}
+
+
+def _request_with_retry(
+    method: str,
+    url: str,
+    client: httpx.Client,
+    **kwargs,
+) -> httpx.Response:
+    """Execute an HTTP request with retry on transient failures.
+
+    Retries on: 429, 5xx status codes, timeouts, and connection errors.
+    Uses exponential backoff between retries.
+    """
+    headers = kwargs.pop("headers", {})
+    headers = {**_base_headers(), **headers}
+    kwargs["headers"] = headers
+
+    last_exc = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            if method == "GET":
+                resp = client.get(url, **kwargs)
+            else:
+                resp = client.post(url, **kwargs)
+
+            if resp.status_code not in _RETRYABLE_STATUS or attempt == MAX_RETRIES - 1:
+                resp.raise_for_status()
+                return resp
+
+            # Retryable status - wait and retry
+            last_exc = httpx.HTTPStatusError(
+                f"HTTP {resp.status_code}", request=resp.request, response=resp
+            )
+            wait = RETRY_BACKOFF[attempt]
+            if resp.status_code == 429:
+                # Respect Retry-After header if present
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        wait = max(wait, float(retry_after))
+                    except ValueError:
+                        pass
+            print(f"Retrying ({attempt + 1}/{MAX_RETRIES}) after {wait:.0f}s...", file=sys.stderr)
+            time.sleep(wait)
+
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_exc = exc
+            if attempt == MAX_RETRIES - 1:
+                raise
+            wait = RETRY_BACKOFF[attempt]
+            print(f"Retrying ({attempt + 1}/{MAX_RETRIES}) after {wait:.0f}s...", file=sys.stderr)
+            time.sleep(wait)
+
+    raise last_exc
+
+
 # -- Reader API --
 
 
@@ -68,12 +138,10 @@ def read_url(
         headers.update(_auth_headers(key))
 
     with _client() as client:
-        resp = client.post(
-            f"{READER_BASE}/",
-            headers=headers,
-            json={"url": url},
+        resp = _request_with_retry(
+            "POST", f"{READER_BASE}/",
+            client, headers=headers, json={"url": url},
         )
-        resp.raise_for_status()
 
     if as_json:
         return resp.json()
@@ -99,12 +167,10 @@ def screenshot_url(
     }
 
     with _client(timeout=60.0) as client:
-        resp = client.post(
-            f"{READER_BASE}/",
-            headers=headers,
-            json={"url": url},
+        resp = _request_with_retry(
+            "POST", f"{READER_BASE}/",
+            client, headers=headers, json={"url": url},
         )
-        resp.raise_for_status()
     return resp.json()
 
 
@@ -140,8 +206,10 @@ def search_web(
         body["hl"] = hl
 
     with _client() as client:
-        resp = client.post(f"{SEARCH_SVIP_BASE}/", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/",
+            client, headers=headers, json=body,
+        )
 
     if as_json:
         return resp.json()
@@ -168,8 +236,10 @@ def search_arxiv(
         body["tbs"] = tbs
 
     with _client() as client:
-        resp = client.post(f"{SEARCH_SVIP_BASE}/", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/",
+            client, headers=headers, json=body,
+        )
 
     if as_json:
         return resp.json()
@@ -196,8 +266,10 @@ def search_ssrn(
         body["tbs"] = tbs
 
     with _client() as client:
-        resp = client.post(f"{SEARCH_SVIP_BASE}/", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/",
+            client, headers=headers, json=body,
+        )
 
     if as_json:
         return resp.json()
@@ -230,8 +302,10 @@ def search_images(
         body["hl"] = hl
 
     with _client() as client:
-        resp = client.post(f"{SEARCH_SVIP_BASE}/", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/",
+            client, headers=headers, json=body,
+        )
 
     if as_json:
         return resp.json()
@@ -267,12 +341,11 @@ def expand_query(
     }
 
     with _client() as client:
-        resp = client.post(
-            f"{SEARCH_SVIP_BASE}/",
-            headers=headers,
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/",
+            client, headers=headers,
             json={"q": query, "query_expansion": True},
         )
-        resp.raise_for_status()
     data = resp.json()
     return data.get("results", data.get("data", []))
 
@@ -306,8 +379,10 @@ def embed(
         body["late_chunking"] = True
 
     with _client() as client:
-        resp = client.post(f"{API_BASE}/v1/embeddings", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{API_BASE}/v1/embeddings",
+            client, headers=headers, json=body,
+        )
     data = resp.json()
     return data.get("data", [])
 
@@ -331,8 +406,10 @@ def local_embed(
     }
     try:
         with _client(timeout=120.0) as client:
-            resp = client.post(f"{LOCAL_SERVER}/v1/embeddings", json=body)
-            resp.raise_for_status()
+            resp = _request_with_retry(
+                "POST", f"{LOCAL_SERVER}/v1/embeddings",
+                client, json=body,
+            )
     except httpx.ConnectError:
         print(
             "Error: local embedding server not running.\n"
@@ -398,8 +475,10 @@ def rerank(
         body["top_n"] = top_n
 
     with _client() as client:
-        resp = client.post(f"{API_BASE}/v1/rerank", headers=headers, json=body)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "POST", f"{API_BASE}/v1/rerank",
+            client, headers=headers, json=body,
+        )
     data = resp.json()
     return data.get("results", [])
 
@@ -506,8 +585,10 @@ def search_bibtex(
         params = {"q": q, "format": "json", "h": str(min(num * 2, 100))}
         try:
             with _client(timeout=5.0) as client:
-                resp = client.get("https://dblp.org/search/publ/api", params=params)
-                resp.raise_for_status()
+                resp = _request_with_retry(
+                    "GET", "https://dblp.org/search/publ/api",
+                    client, params=params,
+                )
             data = resp.json()
             hits = data.get("result", {}).get("hits", {}).get("hit", [])
             results = []
@@ -542,11 +623,10 @@ def search_bibtex(
             params["year"] = f"{year}-"
         try:
             with _client(timeout=5.0) as client:
-                resp = client.get(
-                    "https://api.semanticscholar.org/graph/v1/paper/search",
-                    params=params,
+                resp = _request_with_retry(
+                    "GET", "https://api.semanticscholar.org/graph/v1/paper/search",
+                    client, params=params,
                 )
-                resp.raise_for_status()
             data = resp.json()
             papers = data.get("data", [])
             results = []
@@ -685,12 +765,10 @@ def extract_pdf(
         body["type"] = extract_type
 
     with _client(timeout=60.0) as client:
-        resp = client.post(
-            f"{SEARCH_SVIP_BASE}/extract-pdf",
-            headers=headers,
-            json=body,
+        resp = _request_with_retry(
+            "POST", f"{SEARCH_SVIP_BASE}/extract-pdf",
+            client, headers=headers, json=body,
         )
-        resp.raise_for_status()
     return resp.json()
 
 
@@ -713,12 +791,10 @@ def guess_datetime(url: str) -> dict:
         headers.update(_auth_headers(key))
 
     with _client() as client:
-        resp = client.post(
-            f"{READER_BASE}/",
-            headers=headers,
-            json={"url": url},
+        resp = _request_with_retry(
+            "POST", f"{READER_BASE}/",
+            client, headers=headers, json={"url": url},
         )
-        resp.raise_for_status()
     return resp.json()
 
 
@@ -733,6 +809,8 @@ def primer() -> dict:
         headers.update(_auth_headers(key))
 
     with _client() as client:
-        resp = client.get(f"{READER_BASE}/", headers=headers)
-        resp.raise_for_status()
+        resp = _request_with_retry(
+            "GET", f"{READER_BASE}/",
+            client, headers=headers,
+        )
     return resp.json()

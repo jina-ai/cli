@@ -13,6 +13,12 @@ Usage:
     jina datetime URL          Guess publish date of a URL
     jina primer                Get context info
     jina grep PATTERN          Semantic grep (requires: pip install jina-grep)
+
+Exit codes:
+    0  success
+    1  user/input error (missing args, bad input, missing API key)
+    2  API/server error (network, timeout, server error)
+    130  interrupted (Ctrl+C)
 """
 
 import sys
@@ -22,6 +28,7 @@ import click
 
 from jina_cli import __version__
 from jina_cli import api, utils
+from jina_cli.utils import EXIT_OK, EXIT_USER_ERROR, EXIT_API_ERROR
 
 
 class AliasedGroup(click.Group):
@@ -61,7 +68,19 @@ def _short_usage(usage: str, examples: list[str]) -> None:
     lines.append("")
     lines.append("Run with --help for all options.")
     click.echo("\n".join(lines), err=True)
-    sys.exit(1)
+    sys.exit(EXIT_USER_ERROR)
+
+
+def _validate_url(url: str) -> str:
+    """Validate that input looks like a URL. Returns the URL or exits with guidance."""
+    if not url.startswith(("http://", "https://")):
+        click.echo(
+            f"Error: '{url}' is not a valid URL.\n"
+            f"Fix: URLs must start with http:// or https://",
+            err=True,
+        )
+        sys.exit(EXIT_USER_ERROR)
+    return url
 
 
 @click.group(cls=AliasedGroup, invoke_without_command=True)
@@ -74,9 +93,14 @@ def cli(ctx, api_key):
 
     All Jina AI APIs as Unix-friendly commands. Supports pipes and chaining.
 
+    \b
+    Environment variables:
+        JINA_API_KEY    API key for Jina services (required for most commands)
+
     Set your API key: export JINA_API_KEY=your-key
     Get a key: https://jina.ai/?sui=apikey
     """
+    utils.setup_signals()
     ctx.ensure_object(dict)
     ctx.obj["api_key"] = api_key
     if ctx.invoked_subcommand is None:
@@ -98,7 +122,8 @@ def cli(ctx, api_key):
             "\n"
             "Run any command without arguments for usage examples.\n"
             "Run any command with --help for full options.\n"
-            "API key: export JINA_API_KEY=your-key (https://jina.ai/?sui=apikey)"
+            "API key: export JINA_API_KEY=your-key (https://jina.ai/?sui=apikey)",
+            err=True,
         )
 
 
@@ -143,8 +168,13 @@ def read(ctx, url, links, images, as_json, api_key):
              "cat urls.txt | jina read"],
         )
 
+    for u in urls:
+        _validate_url(u)
+
     try:
-        for u in urls:
+        for i, u in enumerate(urls):
+            if len(urls) > 1:
+                click.echo(f"Reading {i + 1}/{len(urls)}: {u}", err=True)
             result = api.read_url(u, api_key=key, with_links=links, with_images=images, as_json=as_json)
             if as_json:
                 click.echo(json.dumps(result, indent=2, ensure_ascii=False) if isinstance(result, dict) else result)
@@ -308,7 +338,7 @@ def rerank(ctx, query, top_n, model, local, as_json, api_key):
                    "Fix: pipe text lines to rerank, one document per line.\n"
                    "  cat docs.txt | jina rerank \"your query\"\n"
                    "  jina search \"AI\" | jina rerank \"embeddings\"", err=True)
-        sys.exit(1)
+        sys.exit(EXIT_USER_ERROR)
 
     try:
         if local:
@@ -348,7 +378,7 @@ def dedup(ctx, k, as_json, api_key):
                    "Fix: pipe text lines to deduplicate, one item per line.\n"
                    "  cat items.txt | jina dedup\n"
                    "  jina search \"AI\" | jina dedup -k 5", err=True)
-        sys.exit(1)
+        sys.exit(EXIT_USER_ERROR)
 
     try:
         result = api.deduplicate(lines, api_key=key, k=k)
@@ -389,6 +419,8 @@ def screenshot(ctx, url, full_page, output, as_json, api_key):
             ["jina screenshot https://example.com",
              "jina screenshot URL --full-page -o page.jpg"],
         )
+
+    _validate_url(url)
 
     try:
         result = api.screenshot_url(url, api_key=key, full_page=full_page)
@@ -440,7 +472,7 @@ def screenshot(ctx, url, full_page, output, as_json, api_key):
                         "  jina screenshot URL -o screenshot.png",
                         err=True,
                     )
-                    sys.exit(1)
+                    sys.exit(EXIT_USER_ERROR)
     except Exception as e:
         utils.handle_http_error(e)
 
@@ -619,6 +651,8 @@ def datetime_cmd(ctx, url, as_json):
              "echo URL | jina datetime"],
         )
 
+    _validate_url(url)
+
     try:
         result = api.guess_datetime(url)
         if as_json:
@@ -715,7 +749,7 @@ def grep(ctx, args):
             "Fix: pip install jina-grep",
             err=True,
         )
-        sys.exit(1)
+        sys.exit(EXIT_USER_ERROR)
 
     # Replace sys.argv so jina-grep's CLI sees the right args
     import sys as _sys

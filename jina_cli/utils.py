@@ -2,6 +2,27 @@
 
 import sys
 import json
+import signal
+
+# -- Exit codes --
+# Meaningful exit codes for scripting and agent use.
+# 0 = success, 1 = user/input error, 2 = API/server error, 130 = interrupted (Ctrl+C)
+EXIT_OK = 0
+EXIT_USER_ERROR = 1
+EXIT_API_ERROR = 2
+EXIT_INTERRUPTED = 130
+
+
+def setup_signals():
+    """Install signal handlers for clean Ctrl+C (no stack traces)."""
+    def _handler(sig, frame):
+        # Write newline so prompt isn't mangled, then exit quietly
+        print("", file=sys.stderr)
+        sys.exit(EXIT_INTERRUPTED)
+    signal.signal(signal.SIGINT, _handler)
+    # Ignore SIGPIPE so piping to head/tail doesn't traceback
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
 def read_stdin_lines() -> list[str]:
@@ -117,7 +138,9 @@ def format_pdf_results(data: dict, as_json: bool = False) -> str:
 def handle_http_error(e: Exception) -> None:
     """Handle HTTP errors with actionable guidance.
 
-    Every error message must tell the user exactly what to do next.
+    Exit codes:
+      1 = user/input error (bad args, missing key, invalid request)
+      2 = API/server error (server down, rate limit, timeout, network)
     """
     import httpx
 
@@ -136,6 +159,7 @@ def handle_http_error(e: Exception) -> None:
                 "Get a free key: https://jina.ai/?sui=apikey",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_USER_ERROR)
         elif status == 402:
             print(
                 "Error: API quota exhausted.\n"
@@ -143,6 +167,7 @@ def handle_http_error(e: Exception) -> None:
                 "     Or check usage at https://jina.ai/api-dashboard",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_USER_ERROR)
         elif status == 422:
             print(
                 f"Error: invalid request parameters.\n"
@@ -150,6 +175,7 @@ def handle_http_error(e: Exception) -> None:
                 f"Fix: check your arguments with --help",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_USER_ERROR)
         elif status == 429:
             print(
                 "Error: rate limit hit.\n"
@@ -158,6 +184,7 @@ def handle_http_error(e: Exception) -> None:
                 "     Get a key: https://jina.ai/?sui=apikey",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_API_ERROR)
         elif status >= 500:
             print(
                 f"Error: Jina API server error (HTTP {status}).\n"
@@ -165,6 +192,7 @@ def handle_http_error(e: Exception) -> None:
                 f"Fix: retry in a moment. If persistent, check https://status.jina.ai",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_API_ERROR)
         else:
             print(
                 f"Error: HTTP {status}.\n"
@@ -172,6 +200,7 @@ def handle_http_error(e: Exception) -> None:
                 f"Fix: check your arguments with --help",
                 file=sys.stderr,
             )
+            sys.exit(EXIT_API_ERROR)
     elif isinstance(e, httpx.ConnectError):
         print(
             "Error: cannot connect to Jina API.\n"
@@ -179,12 +208,14 @@ def handle_http_error(e: Exception) -> None:
             "     Jina API status: https://status.jina.ai",
             file=sys.stderr,
         )
+        sys.exit(EXIT_API_ERROR)
     elif isinstance(e, httpx.TimeoutException):
         print(
             "Error: request timed out.\n"
             "Fix: retry the command. For large inputs, try smaller batches",
             file=sys.stderr,
         )
+        sys.exit(EXIT_API_ERROR)
     else:
         print(f"Error: {e}", file=sys.stderr)
-    sys.exit(1)
+        sys.exit(EXIT_API_ERROR)
