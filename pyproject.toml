@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jina-cli"
+version = "0.1.0"
+description = "CLI for all Jina AI APIs - search, read, embed, rerank, and more"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+keywords = ["jina", "cli", "search", "embeddings", "rerank", "ai", "api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Text Processing",
+]
+dependencies = [
+    "httpx>=0.27.0",
+    "click>=8.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jina-ai/jina-cli"
+Repository = "https://github.com/jina-ai/jina-cli"
+Issues = "https://github.com/jina-ai/jina-cli/issues"
+
+[project.scripts]
+jina = "jina_cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jina_cli"]
