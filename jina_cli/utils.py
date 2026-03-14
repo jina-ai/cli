@@ -91,6 +91,32 @@ def format_embeddings(data: list[dict], as_json: bool = False) -> str:
     return "\n".join(lines)
 
 
+def format_classify_results(results: list[dict], as_json: bool = False) -> str:
+    """Format classification results for display."""
+    if as_json:
+        return json.dumps(results, indent=2, ensure_ascii=False)
+
+    lines = []
+    for item in results:
+        predictions = item.get("prediction", item.get("predictions", []))
+        if isinstance(predictions, str):
+            # Single prediction
+            score = item.get("score", item.get("confidence", 0))
+            lines.append(f"{predictions} ({score:.4f})")
+        elif isinstance(predictions, list) and predictions:
+            # List of predictions - take top one
+            top = predictions[0]
+            if isinstance(top, dict):
+                label = top.get("label", "")
+                score = top.get("score", top.get("confidence", 0))
+                lines.append(f"{label} ({score:.4f})")
+            else:
+                lines.append(str(top))
+        else:
+            lines.append(str(item))
+    return "\n".join(lines)
+
+
 def format_dedup_results(results: list[dict], as_json: bool = False) -> str:
     """Format deduplication results for display."""
     if as_json:

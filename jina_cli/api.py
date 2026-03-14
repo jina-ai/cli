@@ -354,7 +354,7 @@ def expand_query(
 def embed(
     texts: list[str],
     api_key: str | None = None,
-    model: str = "jina-embeddings-v3",
+    model: str = "jina-embeddings-v5-text-small",
     task: str = "text-matching",
     dimensions: int | None = None,
     late_chunking: bool = False,
@@ -379,6 +379,37 @@ def embed(
     with _client() as client:
         resp = _request_with_retry(
             "POST", f"{API_BASE}/v1/embeddings",
+            client, headers=headers, json=body,
+        )
+    data = resp.json()
+    return data.get("data", [])
+
+
+# -- Classify API --
+
+
+def classify(
+    texts: list[str],
+    labels: list[str],
+    api_key: str | None = None,
+    model: str = "jina-embeddings-v5-text-small",
+) -> list[dict]:
+    """Classify texts into labels using Jina classify API."""
+    key = require_api_key(api_key)
+    headers = {
+        "Content-Type": "application/json",
+        **_auth_headers(key),
+    }
+
+    body: dict = {
+        "model": model,
+        "input": texts,
+        "labels": labels,
+    }
+
+    with _client() as client:
+        resp = _request_with_retry(
+            "POST", f"{API_BASE}/v1/classify",
             client, headers=headers, json=body,
         )
     data = resp.json()
@@ -493,32 +524,12 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def deduplicate(
+def _deduplicate_from_embeddings(
     strings: list[str],
-    api_key: str | None = None,
+    embeddings: list[list[float]],
     k: int | None = None,
 ) -> list[dict]:
-    """Deduplicate strings using embeddings + greedy selection.
-
-    Uses facility-location submodular optimization:
-    greedily selects items that maximize coverage diversity.
-    """
-    if not strings:
-        return []
-    if len(strings) == 1:
-        return [{"index": 0, "text": strings[0]}]
-
-    key = require_api_key(api_key)
-
-    # Get embeddings (v5-text-small is faster and sufficient for dedup)
-    embeddings_data = embed(
-        strings,
-        api_key=key,
-        model="jina-embeddings-v5-text-small",
-        task="text-matching",
-    )
-    embeddings = [item["embedding"] for item in embeddings_data]
-
+    """Core dedup logic: given embeddings, run submodular selection."""
     n = len(embeddings)
 
     # Compute similarity matrix
@@ -530,13 +541,11 @@ def deduplicate(
             sim[j][i] = s
 
     # Lazy greedy submodular selection
+    threshold = 1e-2
     if k is None:
-        # Auto-detect: keep adding until marginal gain drops below threshold
-        threshold = 1e-2
         k = n
 
     selected: list[int] = []
-    # Track max similarity of each item to any selected item (facility-location)
     coverage = [0.0] * n
 
     for _ in range(min(k, n)):
@@ -546,7 +555,6 @@ def deduplicate(
         for i in range(n):
             if i in selected:
                 continue
-            # Marginal gain: how much does adding i improve coverage?
             gain = 0.0
             for j in range(n):
                 new_cov = max(coverage[j], sim[j][i])
@@ -564,6 +572,51 @@ def deduplicate(
             coverage[j] = max(coverage[j], sim[j][best_idx])
 
     return [{"index": i, "text": strings[i]} for i in selected]
+
+
+def deduplicate(
+    strings: list[str],
+    api_key: str | None = None,
+    k: int | None = None,
+) -> list[dict]:
+    """Deduplicate strings using embeddings + greedy selection.
+
+    Uses facility-location submodular optimization:
+    greedily selects items that maximize coverage diversity.
+    """
+    if not strings:
+        return []
+    if len(strings) == 1:
+        return [{"index": 0, "text": strings[0]}]
+
+    key = require_api_key(api_key)
+
+    embeddings_data = embed(
+        strings,
+        api_key=key,
+        model="jina-embeddings-v5-text-small",
+        task="text-matching",
+    )
+    embeddings = [item["embedding"] for item in embeddings_data]
+
+    return _deduplicate_from_embeddings(strings, embeddings, k=k)
+
+
+def local_deduplicate(
+    strings: list[str],
+    model: str = "jina-embeddings-v5-nano",
+    k: int | None = None,
+) -> list[dict]:
+    """Deduplicate strings using local embeddings + greedy selection."""
+    if not strings:
+        return []
+    if len(strings) == 1:
+        return [{"index": 0, "text": strings[0]}]
+
+    embeddings_data = local_embed(strings, model=model, task="text-matching")
+    embeddings = [item["embedding"] for item in embeddings_data]
+
+    return _deduplicate_from_embeddings(strings, embeddings, k=k)
 
 
 # -- BibTeX Search --

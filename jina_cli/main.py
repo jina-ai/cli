@@ -5,6 +5,7 @@ Usage:
     jina search QUERY          Web search
     jina embed TEXT             Generate embeddings
     jina rerank QUERY          Rerank documents by relevance
+    jina classify TEXT         Classify text into labels
     jina dedup                 Deduplicate text lines from stdin
     jina screenshot URL        Capture screenshot of a URL
     jina bibtex QUERY          Search for BibTeX entries
@@ -111,6 +112,7 @@ def cli(ctx, api_key):
             "  jina search QUERY          Web search (also --arxiv, --ssrn, --images, --blog)\n"
             "  jina embed TEXT             Generate embeddings\n"
             "  jina rerank QUERY          Rerank documents from stdin by relevance\n"
+            "  jina classify TEXT         Classify text into labels\n"
             "  jina dedup                 Deduplicate text from stdin\n"
             "  jina screenshot URL        Capture screenshot of a URL\n"
             "  jina bibtex QUERY          Search BibTeX citations\n"
@@ -266,7 +268,7 @@ def search(ctx, query, arxiv, ssrn, images, blog, num, tbs, location, gl, hl, as
 
 @cli.command()
 @click.argument("text", nargs=-1)
-@click.option("--model", default=None, help="Model name (default: jina-embeddings-v3, or v5-nano with --local)")
+@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small, or v5-nano with --local)")
 @click.option("--task", default=None, help="Embedding task type")
 @click.option("--dimensions", type=int, default=None, help="Output dimensions (Matryoshka)")
 @click.option("--local", is_flag=True, help="Use local MLX server (requires: jina-grep serve start)")
@@ -308,7 +310,7 @@ def embed(ctx, text, model, task, dimensions, local, as_json, api_key):
             _task = task or "text-matching"
             result = api.local_embed(texts, model=_model, task=_task)
         else:
-            _model = model or "jina-embeddings-v3"
+            _model = model or "jina-embeddings-v5-text-small"
             _task = task or "text-matching"
             result = api.embed(texts, api_key=key, model=_model, task=_task, dimensions=dimensions)
         click.echo(utils.format_embeddings(result, as_json=as_json))
@@ -366,10 +368,11 @@ def rerank(ctx, query, top_n, model, local, as_json, api_key):
 
 @cli.command()
 @click.option("-k", type=int, default=None, help="Number of unique items to keep (auto if not set)")
+@click.option("--local", is_flag=True, help="Use local MLX server (requires: jina-grep serve start)")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--api-key", default=None, help="Jina API key")
 @click.pass_context
-def dedup(ctx, k, as_json, api_key):
+def dedup(ctx, k, local, as_json, api_key):
     """Deduplicate text lines from stdin.
 
     Uses embeddings to find semantically unique items.
@@ -378,6 +381,7 @@ def dedup(ctx, k, as_json, api_key):
     Examples:
         cat items.txt | jina dedup
         jina search "AI" | jina dedup -k 5
+        cat items.txt | jina dedup --local
     """
     key = api_key or ctx.obj.get("api_key")
     lines = utils.read_stdin_lines()
@@ -390,8 +394,67 @@ def dedup(ctx, k, as_json, api_key):
         sys.exit(EXIT_USER_ERROR)
 
     try:
-        result = api.deduplicate(lines, api_key=key, k=k)
+        if local:
+            result = api.local_deduplicate(lines, k=k)
+        else:
+            result = api.deduplicate(lines, api_key=key, k=k)
         click.echo(utils.format_dedup_results(result, as_json=as_json))
+    except Exception as e:
+        utils.handle_http_error(e)
+
+
+# -- classify --
+
+
+@cli.command()
+@click.argument("text", nargs=-1)
+@click.option("--labels", required=True, multiple=True,
+              help="Labels for classification (comma-separated or repeated --labels)")
+@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small)")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.option("--api-key", default=None, help="Jina API key")
+@click.pass_context
+def classify(ctx, text, labels, model, as_json, api_key):
+    """Classify text into labels.
+
+    Input from arguments or stdin (one text per line).
+
+    \b
+    Examples:
+        jina classify "this is great" --labels positive,negative
+        echo "stock price rose" | jina classify --labels business,sports,tech
+        jina classify "text1" "text2" --labels cat1 --labels cat2 --labels cat3
+    """
+    key = api_key or ctx.obj.get("api_key")
+
+    texts = list(text)
+    if not texts:
+        stdin_lines = utils.read_stdin_lines()
+        texts = stdin_lines
+
+    if not texts:
+        _short_usage(
+            "Usage: jina classify TEXT --labels label1,label2",
+            ["jina classify \"this is great\" --labels positive,negative",
+             "echo \"text\" | jina classify --labels label1,label2",
+             "cat texts.txt | jina classify --labels a,b,c --json"],
+        )
+
+    # Parse labels: support both --labels a,b,c and --labels a --labels b
+    parsed_labels = []
+    for lbl in labels:
+        parsed_labels.extend(l.strip() for l in lbl.split(",") if l.strip())
+
+    if not parsed_labels:
+        click.echo("Error: at least one label required.\n"
+                   "Fix: --labels positive,negative", err=True)
+        sys.exit(EXIT_USER_ERROR)
+
+    _model = model or "jina-embeddings-v5-text-small"
+
+    try:
+        result = api.classify(texts, parsed_labels, api_key=key, model=_model)
+        click.echo(utils.format_classify_results(result, as_json=as_json))
     except Exception as e:
         utils.handle_http_error(e)
 
