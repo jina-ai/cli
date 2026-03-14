@@ -450,6 +450,38 @@ def local_embed(
     return data.get("data", [])
 
 
+def local_classify(
+    texts: list[str],
+    labels: list[str],
+    model: str = "jina-embeddings-v5-nano",
+    task: str = "text-matching",
+) -> list[dict]:
+    """Classify texts into labels using local embeddings and cosine similarity."""
+    all_texts = texts + labels
+    embeddings_data = local_embed(all_texts, model=model, task=task)
+    embeddings = [item["embedding"] for item in embeddings_data]
+
+    text_embs = embeddings[:len(texts)]
+    label_embs = embeddings[len(texts):]
+
+    results = []
+    for i, text_emb in enumerate(text_embs):
+        best_label = labels[0]
+        best_score = -1.0
+        for j, label_emb in enumerate(label_embs):
+            score = _cosine_similarity(text_emb, label_emb)
+            if score > best_score:
+                best_score = score
+                best_label = labels[j]
+        results.append({
+            "index": i,
+            "prediction": best_label,
+            "score": best_score,
+        })
+
+    return results
+
+
 def local_rerank(
     query: str,
     documents: list[str],

@@ -204,7 +204,7 @@ jina grep serve stop     # stop when done
 
 ## Local mode
 
-`jina embed`, `jina rerank`, and `jina dedup` support `--local` to run on Apple Silicon via the jina-grep embedding server instead of the Jina API. No API key needed.
+`jina embed`, `jina rerank`, `jina classify`, and `jina dedup` support `--local` to run on Apple Silicon via the jina-grep embedding server instead of the Jina API. No API key needed.
 
 ```bash
 # Start the local server first
@@ -216,6 +216,9 @@ cat texts.txt | jina embed --local --json
 
 # Local reranking (cosine similarity on local embeddings)
 cat docs.txt | jina rerank --local "machine learning"
+
+# Local classification (cosine similarity on local embeddings)
+jina classify --local "this is great" --labels positive,negative
 
 # Local deduplication
 cat items.txt | jina dedup --local

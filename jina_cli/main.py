@@ -410,11 +410,12 @@ def dedup(ctx, k, local, as_json, api_key):
 @click.argument("text", nargs=-1)
 @click.option("--labels", required=True, multiple=True,
               help="Labels for classification (comma-separated or repeated --labels)")
-@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small)")
+@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small, or v5-nano with --local)")
+@click.option("--local", is_flag=True, help="Use local MLX server (requires: jina-grep serve start)")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--api-key", default=None, help="Jina API key")
 @click.pass_context
-def classify(ctx, text, labels, model, as_json, api_key):
+def classify(ctx, text, labels, model, local, as_json, api_key):
     """Classify text into labels.
 
     Input from arguments or stdin (one text per line).
@@ -424,6 +425,7 @@ def classify(ctx, text, labels, model, as_json, api_key):
         jina classify "this is great" --labels positive,negative
         echo "stock price rose" | jina classify --labels business,sports,tech
         jina classify "text1" "text2" --labels cat1 --labels cat2 --labels cat3
+        jina classify --local "this is great" --labels positive,negative
     """
     key = api_key or ctx.obj.get("api_key")
 
@@ -450,10 +452,13 @@ def classify(ctx, text, labels, model, as_json, api_key):
                    "Fix: --labels positive,negative", err=True)
         sys.exit(EXIT_USER_ERROR)
 
-    _model = model or "jina-embeddings-v5-text-small"
-
     try:
-        result = api.classify(texts, parsed_labels, api_key=key, model=_model)
+        if local:
+            _model = model or "jina-embeddings-v5-nano"
+            result = api.local_classify(texts, parsed_labels, model=_model)
+        else:
+            _model = model or "jina-embeddings-v5-text-small"
+            result = api.classify(texts, parsed_labels, api_key=key, model=_model)
         click.echo(utils.format_classify_results(result, as_json=as_json))
     except Exception as e:
         utils.handle_http_error(e)
