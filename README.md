@@ -28,6 +28,7 @@ export JINA_API_KEY=your-key-here
 | `jina search QUERY` | Web search (also --arxiv, --ssrn, --images, --blog) |
 | `jina embed TEXT` | Generate embeddings |
 | `jina rerank QUERY` | Rerank documents from stdin by relevance |
+| `jina classify TEXT` | Classify text into labels |
 | `jina dedup` | Deduplicate text from stdin |
 | `jina screenshot URL` | Capture screenshot of a URL |
 | `jina bibtex QUERY` | Search BibTeX citations (DBLP + Semantic Scholar) |
@@ -86,7 +87,7 @@ jina search "LLMs" --gl us --hl en     # US, English
 jina embed "hello world"
 jina embed "text1" "text2" "text3"
 cat texts.txt | jina embed
-jina embed "hello" --model jina-embeddings-v3 --task retrieval.query
+jina embed "hello" --model jina-embeddings-v5-text-small --task retrieval.query
 ```
 
 ### Rerank
@@ -94,6 +95,14 @@ jina embed "hello" --model jina-embeddings-v3 --task retrieval.query
 ```bash
 cat docs.txt | jina rerank "machine learning"
 jina search "AI" | jina rerank "embeddings" --top-n 5
+```
+
+### Classify
+
+```bash
+jina classify "I love this product" --labels positive,negative,neutral
+echo "stock prices rose sharply" | jina classify --labels business,sports,tech
+cat texts.txt | jina classify --labels cat1,cat2,cat3 --json
 ```
 
 ### Deduplicate
@@ -195,7 +204,7 @@ jina grep serve stop     # stop when done
 
 ## Local mode
 
-`jina embed` and `jina rerank` support `--local` to run on Apple Silicon via the jina-grep embedding server instead of the Jina API. No API key needed.
+`jina embed`, `jina rerank`, and `jina dedup` support `--local` to run on Apple Silicon via the jina-grep embedding server instead of the Jina API. No API key needed.
 
 ```bash
 # Start the local server first
@@ -207,6 +216,9 @@ cat texts.txt | jina embed --local --json
 
 # Local reranking (cosine similarity on local embeddings)
 cat docs.txt | jina rerank --local "machine learning"
+
+# Local deduplication
+cat items.txt | jina dedup --local
 ```
 
 Local mode uses `jina-embeddings-v5-nano` by default. Override with `--model jina-embeddings-v5-small`.

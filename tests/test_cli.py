@@ -244,6 +244,32 @@ class TestExitCodes:
         assert r.returncode == 1
 
 
+class TestClassify:
+    def test_classify_basic(self):
+        r = run_jina("classify", "I love this movie", "--labels", "positive,negative")
+        assert r.returncode == 0
+        # Human output should show label + score
+        assert "(" in r.stdout  # score in parens
+
+    def test_classify_json(self):
+        r = run_jina("classify", "stock market crash", "--labels", "business,sports,tech", "--json")
+        assert r.returncode == 0
+        data = json.loads(r.stdout)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_classify_stdin(self):
+        r = run_jina("classify", "--labels", "positive,negative", stdin="I love this\nI hate this\n")
+        assert r.returncode == 0
+        lines = [l for l in r.stdout.strip().split("\n") if l]
+        assert len(lines) == 2
+
+    def test_classify_no_labels(self):
+        """Should error when no --labels provided."""
+        r = run_jina("classify", "text")
+        assert r.returncode != 0
+
+
 class TestPipe:
     def test_search_to_rerank(self):
         """search | rerank pipe should work."""
@@ -254,3 +280,30 @@ class TestPipe:
         rerank = run_jina("rerank", "search foundation models", stdin=search.stdout)
         assert rerank.returncode == 0
         assert "[" in rerank.stdout  # scores
+
+    def test_echo_embed_pipe(self):
+        """echo text | jina embed should work."""
+        r = run_jina("embed", stdin="hello world\n")
+        assert r.returncode == 0
+        assert "dim=" in r.stdout
+
+    def test_multiline_dedup_pipe(self):
+        """echo -e "a\\nb" | jina dedup should work."""
+        r = run_jina("dedup", stdin="machine learning\nmachine learning algorithms\nquantum physics\n")
+        assert r.returncode == 0
+        lines = [l for l in r.stdout.strip().split("\n") if l]
+        assert len(lines) >= 1
+
+    def test_echo_classify_pipe(self):
+        """echo text | jina classify --labels should work."""
+        r = run_jina("classify", "--labels", "positive,negative", stdin="this is great\n")
+        assert r.returncode == 0
+        assert "(" in r.stdout
+
+    def test_search_to_dedup_pipe(self):
+        """search | dedup pipe should work."""
+        search = run_jina("search", "python programming", "-n", "3")
+        assert search.returncode == 0
+        if search.stdout.strip():
+            dedup = run_jina("dedup", stdin=search.stdout)
+            assert dedup.returncode == 0
