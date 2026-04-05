@@ -117,6 +117,7 @@ def read_url(
     with_links: bool = False,
     with_images: bool = False,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Read a URL and extract clean content via r.jina.ai."""
     headers = {
@@ -135,7 +136,7 @@ def read_url(
     if key:
         headers.update(_auth_headers(key))
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{READER_BASE}/",
             client, headers=headers, json={"url": url},
@@ -153,6 +154,7 @@ def screenshot_url(
     url: str,
     api_key: str | None = None,
     full_page: bool = False,
+    timeout: float = 60.0,
 ) -> dict:
     """Capture screenshot of a URL via r.jina.ai."""
     key = require_api_key(api_key)
@@ -164,7 +166,7 @@ def screenshot_url(
         **_auth_headers(key),
     }
 
-    with _client(timeout=60.0) as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{READER_BASE}/",
             client, headers=headers, json={"url": url},
@@ -184,6 +186,7 @@ def search_web(
     gl: str | None = None,
     hl: str | None = None,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Web search via s.jina.ai."""
     key = require_api_key(api_key)
@@ -203,7 +206,7 @@ def search_web(
     if hl:
         body["hl"] = hl
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/",
             client, headers=headers, json=body,
@@ -220,6 +223,7 @@ def search_arxiv(
     num: int = 5,
     tbs: str | None = None,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Search arXiv papers."""
     key = require_api_key(api_key)
@@ -233,7 +237,7 @@ def search_arxiv(
     if tbs:
         body["tbs"] = tbs
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/",
             client, headers=headers, json=body,
@@ -250,6 +254,7 @@ def search_ssrn(
     num: int = 5,
     tbs: str | None = None,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Search SSRN papers."""
     key = require_api_key(api_key)
@@ -263,7 +268,7 @@ def search_ssrn(
     if tbs:
         body["tbs"] = tbs
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/",
             client, headers=headers, json=body,
@@ -282,6 +287,7 @@ def search_images(
     gl: str | None = None,
     hl: str | None = None,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Search images."""
     key = require_api_key(api_key)
@@ -299,7 +305,7 @@ def search_images(
     if hl:
         body["hl"] = hl
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/",
             client, headers=headers, json=body,
@@ -316,11 +322,12 @@ def search_blog(
     num: int = 5,
     tbs: str | None = None,
     as_json: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict | str:
     """Search Jina AI blog via web search with site: filter."""
     key = require_api_key(api_key)
     site_query = f"site:jina.ai/news {query}"
-    return search_web(site_query, api_key=key, num=num, tbs=tbs, as_json=as_json)
+    return search_web(site_query, api_key=key, num=num, tbs=tbs, as_json=as_json, timeout=timeout)
 
 
 # -- Expand Query --
@@ -329,6 +336,7 @@ def search_blog(
 def expand_query(
     query: str,
     api_key: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[str]:
     """Expand a search query into related queries."""
     key = require_api_key(api_key)
@@ -338,7 +346,7 @@ def expand_query(
         **_auth_headers(key),
     }
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/",
             client, headers=headers,
@@ -358,6 +366,7 @@ def embed(
     task: str = "text-matching",
     dimensions: int | None = None,
     late_chunking: bool = False,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[dict]:
     """Generate embeddings for texts."""
     key = require_api_key(api_key)
@@ -376,7 +385,7 @@ def embed(
     if late_chunking:
         body["late_chunking"] = True
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{API_BASE}/v1/embeddings",
             client, headers=headers, json=body,
@@ -393,6 +402,7 @@ def classify(
     labels: list[str],
     api_key: str | None = None,
     model: str = "jina-embeddings-v5-text-small",
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[dict]:
     """Classify texts into labels using Jina classify API."""
     key = require_api_key(api_key)
@@ -407,7 +417,7 @@ def classify(
         "labels": labels,
     }
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{API_BASE}/v1/classify",
             client, headers=headers, json=body,
@@ -519,6 +529,7 @@ def rerank(
     api_key: str | None = None,
     model: str = "jina-reranker-v3",
     top_n: int | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[dict]:
     """Rerank documents by relevance to query."""
     key = require_api_key(api_key)
@@ -535,7 +546,7 @@ def rerank(
     if top_n is not None:
         body["top_n"] = top_n
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{API_BASE}/v1/rerank",
             client, headers=headers, json=body,
@@ -610,6 +621,7 @@ def deduplicate(
     strings: list[str],
     api_key: str | None = None,
     k: int | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[dict]:
     """Deduplicate strings using embeddings + greedy selection.
 
@@ -628,6 +640,7 @@ def deduplicate(
         api_key=key,
         model="jina-embeddings-v5-text-small",
         task="text-matching",
+        timeout=timeout,
     )
     embeddings = [item["embedding"] for item in embeddings_data]
 
@@ -827,6 +840,7 @@ def extract_pdf(
     api_key: str | None = None,
     max_edge: int = 1024,
     extract_type: str | None = None,
+    timeout: float = 60.0,
 ) -> dict:
     """Extract figures, tables, equations from a PDF."""
     key = require_api_key(api_key)
@@ -847,7 +861,7 @@ def extract_pdf(
     if extract_type:
         body["type"] = extract_type
 
-    with _client(timeout=60.0) as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{SEARCH_SVIP_BASE}/extract-pdf",
             client, headers=headers, json=body,
@@ -858,7 +872,7 @@ def extract_pdf(
 # -- Datetime Guess --
 
 
-def guess_datetime(url: str) -> dict:
+def guess_datetime(url: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
     """Guess the publish/update datetime of a URL.
 
     This calls the Jina reader API which handles the detection server-side.
@@ -873,7 +887,7 @@ def guess_datetime(url: str) -> dict:
     if key:
         headers.update(_auth_headers(key))
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "POST", f"{READER_BASE}/",
             client, headers=headers, json={"url": url},
@@ -884,14 +898,14 @@ def guess_datetime(url: str) -> dict:
 # -- Primer --
 
 
-def primer() -> dict:
+def primer(timeout: float = DEFAULT_TIMEOUT) -> dict:
     """Get context info (time, location, network)."""
     headers = {"Accept": "application/json"}
     key = get_api_key()
     if key:
         headers.update(_auth_headers(key))
 
-    with _client() as client:
+    with _client(timeout=timeout) as client:
         resp = _request_with_retry(
             "GET", f"{READER_BASE}/",
             client, headers=headers,

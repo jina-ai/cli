@@ -1,8 +1,10 @@
 """Unit tests for local mode functions (no API key or server needed)."""
 
-from unittest.mock import patch
+import subprocess
+import sys
+from unittest.mock import MagicMock, patch
 
-from jina_cli.api import local_classify, _cosine_similarity
+from jina_cli.api import local_classify, _cosine_similarity, DEFAULT_TIMEOUT
 
 
 class TestCosineSimlarity:
@@ -70,3 +72,78 @@ class TestLocalClassify:
         assert "prediction" in result[0]
         assert "score" in result[0]
         assert result[0]["prediction"] == "label1"
+
+
+def run_jina(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "jina_cli.main", *args],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        input=stdin,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+
+class TestTimeoutFlag:
+    def test_global_timeout_in_help(self):
+        """--timeout should appear in global --help."""
+        r = subprocess.run(
+            [sys.executable, "-m", "jina_cli.main", "--help"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert "--timeout" in r.stdout or "--timeout" in r.stderr
+
+    def test_subcommand_timeout_in_help(self):
+        """--timeout should appear in subcommand --help."""
+        for cmd in ["read", "search", "embed", "rerank", "dedup", "classify",
+                    "screenshot", "bibtex", "expand", "pdf", "datetime", "primer"]:
+            r = subprocess.run(
+                [sys.executable, "-m", "jina_cli.main", cmd, "--help"],
+                capture_output=True, text=True, timeout=10,
+            )
+            assert "--timeout" in r.stdout or "--timeout" in r.stderr, \
+                f"--timeout missing from `jina {cmd} --help`"
+
+    def test_api_functions_accept_timeout(self):
+        """API functions should pass timeout to httpx client."""
+        import jina_cli.api as api_module
+
+        mock_resp = MagicMock()
+        mock_resp.text = "content"
+        mock_resp.json.return_value = {"data": {}}
+        mock_resp.status_code = 200
+
+        with patch("jina_cli.api._client") as mock_client_factory:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_resp
+            mock_resp.raise_for_status = MagicMock()
+            mock_client_factory.return_value = mock_client
+
+            api_module.read_url("https://example.com", timeout=60.0)
+            mock_client_factory.assert_called_with(timeout=60.0)
+
+    def test_default_timeout_unchanged(self):
+        """DEFAULT_TIMEOUT should remain 30.0."""
+        assert DEFAULT_TIMEOUT == 30.0
+
+    def test_global_timeout_propagates(self):
+        """--timeout passed globally should be stored in context."""
+        import click
+        from click.testing import CliRunner
+        from jina_cli.main import cli
+
+        runner = CliRunner()
+
+        captured = {}
+
+        @cli.command("_test_timeout")
+        @click.option("--timeout", default=None, type=float)
+        @click.pass_context
+        def _test_cmd(ctx, timeout):
+            captured["timeout"] = ctx.obj.get("timeout")
+
+        result = runner.invoke(cli, ["--timeout", "99.0", "_test_timeout"])
+        assert captured.get("timeout") == 99.0
