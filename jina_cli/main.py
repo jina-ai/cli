@@ -268,7 +268,7 @@ def search(ctx, query, arxiv, ssrn, images, blog, num, tbs, location, gl, hl, as
 
 @cli.command()
 @click.argument("text", nargs=-1)
-@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small, or v5-nano with --local)")
+@click.option("--model", default=None, help="Model name (default: jina-embeddings-v5-text-small, or v5-nano with --local). Local options: jina-embeddings-v5-{small,nano,omni-small,omni-nano}")
 @click.option("--task", default=None, help="Embedding task type")
 @click.option("--dimensions", type=int, default=None, help="Output dimensions (Matryoshka)")
 @click.option("--local", is_flag=True, help="Use local MLX server (requires: jina-grep serve start)")
