@@ -88,6 +88,7 @@ jina embed "hello world"
 jina embed "text1" "text2" "text3"
 cat texts.txt | jina embed
 jina embed "hello" --model jina-embeddings-v5-text-small --task retrieval.query
+jina embed "hello" --model jina-embeddings-v5-omni-small --task retrieval.query
 ```
 
 ### Rerank
@@ -224,7 +225,7 @@ jina classify --local "this is great" --labels positive,negative
 cat items.txt | jina dedup --local
 ```
 
-Local mode uses `jina-embeddings-v5-nano` by default. Override with `--model jina-embeddings-v5-small`.
+Local mode uses `jina-embeddings-v5-nano` by default. Override with `--model jina-embeddings-v5-small`, `jina-embeddings-v5-omni-small`, or `jina-embeddings-v5-omni-nano`.
 
 Requires `pip install jina-grep` and `jina grep serve start`.
 
