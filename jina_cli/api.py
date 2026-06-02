@@ -663,6 +663,8 @@ def search_bibtex(
 ) -> list[dict]:
     """Search for BibTeX entries via DBLP and Semantic Scholar."""
 
+    errors: list[str] = []   # record source failures so an outage is not silently "no matches"
+
     def _search_dblp() -> list[dict]:
         q = f"{query} {author}" if author else query
         params = {"q": q, "format": "json", "h": str(min(num * 2, 100))}
@@ -693,7 +695,8 @@ def search_bibtex(
                     }
                 )
             return results
-        except Exception:
+        except Exception as e:
+            errors.append(f"DBLP: {e}")
             return []
 
     def _search_semantic_scholar() -> list[dict]:
@@ -730,7 +733,8 @@ def search_bibtex(
                     }
                 )
             return results
-        except Exception:
+        except Exception as e:
+            errors.append(f"Semantic Scholar: {e}")
             return []
 
     # Run both in sequence (could be threaded but keep simple)
@@ -760,6 +764,12 @@ def search_bibtex(
             seen_titles[title_key] = r
 
     results = list(seen_titles.values())[:num]
+
+    # A lookup that errored must not masquerade as "no matches": if every source we tried failed
+    # and we got nothing, surface the failure (the CLI maps it to a clear error + exit code)
+    # instead of returning an empty list.
+    if not results and errors:
+        raise RuntimeError("bibtex lookup failed (" + "; ".join(errors) + ")")
 
     # Generate BibTeX
     for r in results:
