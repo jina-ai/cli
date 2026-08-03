@@ -517,7 +517,7 @@ def rerank(
     query: str,
     documents: list[str],
     api_key: str | None = None,
-    model: str = "jina-reranker-v3",
+    model: str = "jina-reranker-v3.5",
     top_n: int | None = None,
 ) -> list[dict]:
     """Rerank documents by relevance to query."""

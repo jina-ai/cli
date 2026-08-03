@@ -324,7 +324,7 @@ def embed(ctx, text, model, task, dimensions, local, as_json, api_key):
 @cli.command()
 @click.argument("query")
 @click.option("-n", "--top-n", type=int, default=None, help="Max results to return")
-@click.option("--model", default=None, help="Reranker model (default: jina-reranker-v3, or v5-nano with --local)")
+@click.option("--model", default=None, help="Reranker model (default: jina-reranker-v3.5, or v5-nano with --local)")
 @click.option("--local", is_flag=True, help="Use local MLX server (requires: jina-grep serve start)")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--api-key", default=None, help="Jina API key")
@@ -356,7 +356,7 @@ def rerank(ctx, query, top_n, model, local, as_json, api_key):
             _model = model or "jina-embeddings-v5-nano"
             result = api.local_rerank(query, documents, model=_model, top_n=top_n)
         else:
-            _model = model or "jina-reranker-v3"
+            _model = model or "jina-reranker-v3.5"
             result = api.rerank(query, documents, api_key=key, model=_model, top_n=top_n)
         click.echo(utils.format_rerank_results(result, documents, as_json=as_json))
     except Exception as e:
