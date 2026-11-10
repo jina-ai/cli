@@ -2,7 +2,10 @@
 
 from unittest.mock import patch
 
+from click.testing import CliRunner
+
 from jina_cli.api import local_classify, _cosine_similarity
+from jina_cli.main import cli
 
 
 class TestCosineSimlarity:
@@ -70,3 +73,32 @@ class TestLocalClassify:
         assert "prediction" in result[0]
         assert "score" in result[0]
         assert result[0]["prediction"] == "label1"
+
+
+class TestDedupKValidation:
+    """Non-positive -k must be rejected before any API/local call (offline)."""
+
+    def test_dedup_zero_k_rejected(self, monkeypatch):
+        monkeypatch.delenv("JINA_API_KEY", raising=False)
+        result = CliRunner().invoke(
+            cli, ["dedup", "-k", "0"], input="apple\nbanana\ncherry\n"
+        )
+        assert result.exit_code == 1
+        assert "-k must be a positive integer" in result.stderr
+        assert "API key" not in result.stderr
+
+    def test_dedup_negative_k_rejected(self, monkeypatch):
+        monkeypatch.delenv("JINA_API_KEY", raising=False)
+        result = CliRunner().invoke(
+            cli, ["dedup", "-k", "-2"], input="apple\nbanana\n"
+        )
+        assert result.exit_code == 1
+        assert "-k must be a positive integer" in result.stderr
+
+    def test_dedup_valid_k_passes_validation(self, monkeypatch):
+        """A valid -k proceeds past validation (fails later on API key)."""
+        monkeypatch.delenv("JINA_API_KEY", raising=False)
+        result = CliRunner().invoke(
+            cli, ["dedup", "-k", "2"], input="apple\nbanana\ncherry\n"
+        )
+        assert "-k must be a positive integer" not in result.stderr
