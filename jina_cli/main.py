@@ -393,6 +393,14 @@ def dedup(ctx, k, local, as_json, api_key):
                    "  jina search \"AI\" | jina dedup -k 5", err=True)
         sys.exit(EXIT_USER_ERROR)
 
+    if k is not None and k < 1:
+        click.echo(
+            f"Error: invalid value for -k: {k}.\n"
+            "Fix: -k must be a positive integer (number of unique items to keep).",
+            err=True,
+        )
+        sys.exit(EXIT_USER_ERROR)
+
     try:
         if local:
             result = api.local_deduplicate(lines, k=k)
